@@ -1,0 +1,43 @@
+#!/usr/bin/env python
+
+import os
+import sys
+sys.path.insert(0, os.path.join(
+   os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+   "lib"
+))
+
+from allocator import Allocator
+from google_client import GoogleAuthentication
+from interviewers import fetch_interviewers
+from slot_generator import fetch_slots
+
+
+def main():
+    auth = GoogleAuthentication()
+    if not auth.credentials_supplied():
+        if not auth.initial_auth():
+            print("Unable to complete authentication")
+            return
+        auth.display_credentials()
+        return
+
+    creds = auth.get_credentials()
+    if not creds:
+        print("Credentials supplied were not valid")
+        return
+
+    cache_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "cache",
+    )
+
+    slots = fetch_slots(creds, cache_dir)
+    interviewers = fetch_interviewers(creds, cache_dir)
+    Allocator(slots, interviewers).allocate()
+    for slot in slots:
+        if slot.new:
+            print slot
+
+if __name__ == '__main__':
+    main()
