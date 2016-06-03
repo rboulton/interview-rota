@@ -7,7 +7,7 @@ import os
 import pytz
 import re
 
-holiday_events = re.compile(r'\b((leave)|(al)|(holiday)|(ooi)|(out of office))\b')
+holiday_events = re.compile(r'\b((leave)|(al)|(holiday)|(ooi)|(out of office)|(wfh))\b')
 preferred_events = re.compile(r'\bpreferred\binterview\bslot\b')
 
 

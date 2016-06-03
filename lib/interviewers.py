@@ -27,6 +27,7 @@ class Interviewer(object):
         self.senior_developer = to_bool(fields.get("senior_developer"))
         self.gender = fields.get("gender").lower().strip()
         self.use_rate = float(fields.get("use_rate", "1"))
+        self.team = fields.get("team")
         self.calendar = None
         self.recent_interview_slots = 0
         self.recent_interviews = 0
@@ -45,7 +46,7 @@ class Interviewer(object):
         return self.recent_work() + self.planned_work()
 
     def __repr__(self):
-        return "<Interviewer(%r)>" % (self.name,)
+        return "<Interviewer(%r, %r)>" % (self.name, self.team)
 
 
 class Interviewers(object):

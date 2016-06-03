@@ -34,10 +34,14 @@ def main():
 
     slots = fetch_slots(creds, cache_dir)
     interviewers = fetch_interviewers(creds, cache_dir)
-    Allocator(slots, interviewers).allocate()
+    allocator = Allocator(slots, interviewers)
+    allocator.allocate()
     for slot in slots:
         if slot.new:
             print slot
+
+    allocator.display_interviewer_stats()
+
 
 if __name__ == '__main__':
     main()

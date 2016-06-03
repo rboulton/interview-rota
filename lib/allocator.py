@@ -166,6 +166,7 @@ class SlotAssignments(object):
         self.assignments[slot_start].assign(email)
 
     def drop(self, assignment):
+        assignment.slot.event.attendees = {}
         del self.assignments[assignment.slot.start]
 
     def new_assignments(self):
@@ -274,6 +275,7 @@ class Allocator(object):
         self.allocate_technical()
         self.allocate_three_people()
 
+        self.drop_slots(lambda x: not x.viable, "viable panel")
         self.update_assignment_events()
 
     def update_assignment_events(self):
@@ -301,6 +303,7 @@ class Allocator(object):
         May fail to allocate to some of the slots, in which case it will drop them.
 
         """
+        print
         print "Assigning chairs"
         people = filter(lambda x: x.can_chair, self.interviewers)
         check = lambda assignment: not assignment.has_chair
@@ -316,16 +319,17 @@ class Allocator(object):
         May fail to allocate to some of the slots, in which case it will drop them.
 
         """
+        print
         print "Assigning opposite gender"
         people = filter(lambda x: x.gender == 'f', self.interviewers)
         check = lambda assignment: not assignment.has_women
-        self.assign_people(check, people)
+        self.assign_people(check, people, max_conflict_level=3)
         self.drop_slots(check, "woman")
         # pprint([assignment for assignment in self.assignments.new_assignments()])
 
         people = filter(lambda x: x.gender == 'm', self.interviewers)
         check = lambda assignment: not assignment.has_man
-        self.assign_people(check, people)
+        self.assign_people(check, people, max_conflict_level=3)
         self.drop_slots(check, "man")
         # pprint([assignment for assignment in self.assignments.new_assignments()])
 
@@ -339,6 +343,7 @@ class Allocator(object):
         May fail to allocate to some of the slots, in which case it will drop them.
 
         """
+        print
         print "Assigning frontend interviewers"
         people = filter(lambda x: x.can_do_frontend_test, self.interviewers)
         check = lambda assignment: not assignment.can_be_frontend
@@ -353,6 +358,7 @@ class Allocator(object):
         May fail to allocate to some of the slots, in which case it will drop them.
 
         """
+        print
         print "Assigning technical people"
         people = filter(lambda x: x.technical, self.interviewers)
         check = lambda assignment: not assignment.has_two_tech
@@ -370,6 +376,7 @@ class Allocator(object):
         May fail to allocate to some of the slots, in which case it will drop them.
 
         """
+        print
         print "Assigning full panel"
         people = self.interviewers
         check = lambda assignment: len(assignment.assigned) < 3
@@ -390,7 +397,7 @@ class Allocator(object):
             )
             self.assignments.drop(assignment)
 
-    def assign_people(self, check, people, rate_to_fill=1.0):
+    def assign_people(self, check, people, rate_to_fill=1.0, max_conflict_level=1000000000):
         assignments_made = set()
         assignments_to_fill = self.assignments.new_where(check)
         total_number_of_new_assignments = len(self.assignments.new_assignments())
@@ -401,7 +408,7 @@ class Allocator(object):
 
         work_share = self.calc_work_share(len(assignments_to_fill), people)
 
-        people_emails = set(person.email for person in people)
+        people_by_email = dict((person.email, person) for person in people)
 
         # print "Initial assignments"
         # pprint([assignment for assignment in assignments_to_fill])
@@ -410,6 +417,10 @@ class Allocator(object):
         # meetings, only moving to the next level once there are no more
         # possible assignments.
         for conflict_level in self.conflict_levels:
+            if conflict_level > max_conflict_level:
+                continue
+            if sum(work_share.values()) <= 0:
+                break
             self.update_assignment_events()
 
             print "At conflict level {}".format(conflict_level)
@@ -428,7 +439,7 @@ class Allocator(object):
             # possible
             for assignment in self.assignments:
                 for person in assignment.assigned:
-                    if person.email in people_emails:
+                    if person.email in people_by_email.keys():
                         # print "Already: {} {}".format(assignment.slot.start, person.email)
                         possible_at_level.assigned(
                             assignment.slot.start,
@@ -448,6 +459,15 @@ class Allocator(object):
                     if work > 0:
                         slot_start = possible_at_level.busiest_slot_possible(email)
                         if slot_start is not None:
+                            teams = Counter(
+                                person.team
+                                for person in assignments_to_fill.assignments[slot_start].assigned
+                            )
+                            person = people_by_email[email]
+                            if teams.get(person.team) >= 2:
+                                print "Not assigning {} to slot {} - already got someone from team {}".format(
+                                    email, slot_start, person.team)
+                                continue
                             print(
                                 "Assigning {} to slot {} at conflict level {}".format(
                                     email, slot_start, conflict_level
@@ -489,7 +509,7 @@ class Allocator(object):
         # Share the work out to aim to get everyone doing an equal share
         average_work = float(work_done + slots_to_assign) / len(interviewers)
         work_share = dict(
-            (interviewer.email, (average_work - interviewer.work()) * interviewer.use_rate)
+            (interviewer.email, max(0, average_work * interviewer.use_rate - interviewer.work()))
             for interviewer in interviewers
         )
         # print "Raw work share"
@@ -497,7 +517,7 @@ class Allocator(object):
         #     print("{} {}".format(email, share))
 
         # print "Work Share unnormalised:"
-        # pprint(work_share)
+        # import pprint;pprint.pprint(work_share)
         # print sum(work_share.values()), slots_to_assign
         # print
 
@@ -553,9 +573,9 @@ class Allocator(object):
         return dict(conflicts_by_email), sorted(conflict_levels)
 
     def display_interviewer_stats(self):
-        print "Name, recent interviewer, recent interview slots"
-        for interviewer in self.interviewers:
-            print interviewer.name, interviewer.recent_interviews, interviewer.recent_interview_slots
+        print "Name, recent interviewes, recent interview slots, new interview slots"
+        for interviewer in sorted(self.interviewers, key=lambda x: x.work(), reverse=True):
+            print interviewer.name, interviewer.work(), interviewer.recent_interviews, interviewer.recent_interview_slots, interviewer.newly_assigned_interviews
 
     def count_recent_interviews(self):
         """Count the number of recent interviews done.
@@ -573,5 +593,5 @@ class Allocator(object):
                     print "Unknown attendee of recent interview: ", attendee
                     continue
                 interviewer.recent_interview_slots += 1
-                if not slot.event.summary.lower().startswith("Interview placeholder"):
+                if not slot.event.summary.lower().startswith("interview placeholder"):
                     interviewer.recent_interviews += 1
