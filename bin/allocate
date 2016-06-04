@@ -8,9 +8,13 @@ sys.path.insert(0, os.path.join(
 ))
 
 from allocator import Allocator
+from calendar_fetcher import CalendarService
+from calendar_setter import CalendarSetter
 from google_client import GoogleAuthentication
 from interviewers import fetch_interviewers
 from slot_generator import fetch_slots
+
+appointment_calendar_name = "Dev & Web Ops Recruitment"
 
 
 def main():
@@ -26,21 +30,51 @@ def main():
     if not creds:
         print("Credentials supplied were not valid")
         return
+    calendar_service = CalendarService(creds)
 
     cache_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "cache",
     )
 
-    slots = fetch_slots(creds, cache_dir)
-    interviewers = fetch_interviewers(creds, cache_dir)
+    slots = fetch_slots(
+        calendar_service,
+        cache_dir,
+        days_back = 28,
+        days_forward = 16,
+        minimum_warning = 10,
+    )
+    interviewers = fetch_interviewers(calendar_service, cache_dir)
     allocator = Allocator(slots, interviewers)
     allocator.allocate()
-    for slot in slots:
-        if slot.new:
-            print slot
-
+    setter = CalendarSetter(calendar_service)
+    print
     allocator.display_interviewer_stats()
+    print
+    for slot in slots:
+        if slot.new and slot.people():
+            print "Creating event for {}: {}".format(
+                slot.start,
+                ", ".join(person.name for person in slot.people()),
+            )
+
+    print "Confirm creation: type 'yes'"
+    confirm = sys.stdin.readline()
+    if confirm.strip().lower() != 'yes':
+        print "Cancelled"
+        return
+
+    for slot in slots:
+        if slot.new and slot.people():
+            print "Creating event for {}: {}".format(
+                slot.start,
+                ", ".join(person.name for person in slot.people()),
+            )
+            # import pprint;pprint.pprint(slot.placeholder_invitation())
+            setter.add_event(
+                appointment_calendar_name,
+                slot.placeholder_invitation(),
+            )
 
 
 if __name__ == '__main__':

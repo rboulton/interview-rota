@@ -98,7 +98,8 @@ class SlotAssignment(object):
             len(self._assigned) == 3 and
             self.has_chair and
             self.has_two_tech and
-            self.gender_diverse
+            self.gender_diverse and
+            self.has_two_civil_servants
         )
 
     @property
@@ -112,6 +113,10 @@ class SlotAssignment(object):
     @property
     def has_two_tech(self):
         return len(filter(lambda person: person.technical, self._assigned)) >= 2
+
+    @property
+    def has_two_civil_servants(self):
+        return len(filter(lambda person: person.civil_servant, self._assigned)) >= 2
 
     @property
     def gender_diverse(self):
@@ -273,6 +278,7 @@ class Allocator(object):
         self.allocate_gender()
         self.allocate_frontend()
         self.allocate_technical()
+        self.allocate_civil_servant()
         self.allocate_three_people()
 
         self.drop_slots(lambda x: not x.viable, "viable panel")
@@ -282,6 +288,7 @@ class Allocator(object):
         for interviewer in self.interviewers:
             # print interviewer.email, interviewer.newly_assigned_interviews
             interviewer.newly_assigned_interviews = 0
+            interviewer.new_slots_by_isoweek.clear()
 
         for assignment in self.assignments.new_assignments():
             assignment.slot.event.attendees = {"needsAction": [
@@ -290,6 +297,7 @@ class Allocator(object):
             ]}
             for interviewer in assignment.assigned:
                 interviewer.newly_assigned_interviews += 1
+                interviewer.new_slots_by_isoweek[assignment.slot.isoweek] += 1
 
         # print
         # for interviewer in self.interviewers:
@@ -368,6 +376,24 @@ class Allocator(object):
         # pprint([assignment for assignment in self.assignments.new_assignments()])
         self.drop_slots(check, "two technical people")
 
+    def allocate_civil_servant(self):
+        """Allocate at least two civil servants to the slots
+        
+        Will update the supplied assignments to store the allocated person in them.
+
+        May fail to allocate to some of the slots, in which case it will drop them.
+
+        """
+        print
+        print "Assigning civil servants"
+        people = filter(lambda x: x.civil_servant, self.interviewers)
+        check = lambda assignment: not assignment.has_two_civil_servants
+        while True:
+            if not self.assign_people(check, people):
+                break
+        # pprint([assignment for assignment in self.assignments.new_assignments()])
+        self.drop_slots(check, "two civil servants")
+
     def allocate_three_people(self):
         """Allocate three people to the slots
         
@@ -399,7 +425,9 @@ class Allocator(object):
 
     def assign_people(self, check, people, rate_to_fill=1.0, max_conflict_level=1000000000):
         assignments_made = set()
-        assignments_to_fill = self.assignments.new_where(check)
+        assignments_to_fill = self.assignments.new_where(lambda assignment:
+            len(assignment.assigned) < 3
+        ).new_where(check)
         total_number_of_new_assignments = len(self.assignments.new_assignments())
         number_to_fill = (
             int(math.ceil(total_number_of_new_assignments * rate_to_fill))
@@ -423,7 +451,7 @@ class Allocator(object):
                 break
             self.update_assignment_events()
 
-            print "At conflict level {}".format(conflict_level)
+            # print "At conflict level {}".format(conflict_level)
             possible_at_level = PossibleAssignments(assignments_to_fill.new_where(
                 lambda a: a.slot.start not in assignments_made
             ))
@@ -464,12 +492,19 @@ class Allocator(object):
                                 for person in assignments_to_fill.assignments[slot_start].assigned
                             )
                             person = people_by_email[email]
-                            if teams.get(person.team) >= 2:
-                                print "Not assigning {} to slot {} - already got someone from team {}".format(
+                            if teams.get(person.team) >= 1:
+                                print "  Not assigning {} to slot {} - already got someone from team {}".format(
                                     email, slot_start, person.team)
                                 continue
+
+                            isoweek = slot_start.isocalendar()[1]
+                            if person.slots_in_week(isoweek) >= 2:
+                                print "  Not assigning {} to slot {} - already got 2 interview slots in week {}".format(
+                                    email, slot_start, isoweek)
+                                continue
+
                             print(
-                                "Assigning {} to slot {} at conflict level {}".format(
+                                " Assigning {} to slot {} at conflict level {}".format(
                                     email, slot_start, conflict_level
                                 )
                             )
@@ -477,6 +512,7 @@ class Allocator(object):
                             possible_at_level.drop_slot(slot_start)
                             assignments_to_fill.assign(slot_start, email)
                             work_share[email] -= 1
+                            person.new_slots_by_isoweek[isoweek] += 1
                             changed = True
                             assignments_made.add(slot_start)
                             number_to_fill -= 1
@@ -509,9 +545,14 @@ class Allocator(object):
         # Share the work out to aim to get everyone doing an equal share
         average_work = float(work_done + slots_to_assign) / len(interviewers)
         work_share = dict(
-            (interviewer.email, max(0, average_work * interviewer.use_rate - interviewer.work()))
-            for interviewer in interviewers
+            (email, max(0, work))
+            for (email, work) in (
+                (interviewer.email, average_work * interviewer.use_rate - interviewer.work())
+                for interviewer in interviewers
+            )
+            if work > 0
         )
+
         # print "Raw work share"
         # for email, share in sorted(work_share.items()):
         #     print("{} {}".format(email, share))
@@ -523,19 +564,19 @@ class Allocator(object):
 
         # Adjust to take account of people who had already done more work than
         # we're requiring of them.
-        for rounding_point in range(-9, 1):
+        for rounding_point in range(-9, 10):
             rounded_work_share = Allocator.normalised_work_share(
                 slots_to_assign, work_share, rounding_point * 0.1
             )
-            if sum(rounded_work_share.values()) >= slots_to_assign:
+            if sum(rounded_work_share.values()) - slots_to_assign >= 5:
                 break
         work_share = rounded_work_share
 
-        print "Work Share:"
-        for email, share in sorted(work_share.items()):
-            print(" {} {}".format(email, share))
-        print sum(work_share.values()), slots_to_assign
-        print
+        # print "Work Share:"
+        # for email, share in sorted(work_share.items()):
+        #     print(" {} {}".format(email, share))
+        # print sum(work_share.values()), slots_to_assign
+        # print
 
         return work_share
 
@@ -573,7 +614,7 @@ class Allocator(object):
         return dict(conflicts_by_email), sorted(conflict_levels)
 
     def display_interviewer_stats(self):
-        print "Name, recent interviewes, recent interview slots, new interview slots"
+        print "Name, work, recent interviewes, recent interview slots, new interview slots"
         for interviewer in sorted(self.interviewers, key=lambda x: x.work(), reverse=True):
             print interviewer.name, interviewer.work(), interviewer.recent_interviews, interviewer.recent_interview_slots, interviewer.newly_assigned_interviews
 
@@ -592,6 +633,7 @@ class Allocator(object):
                 except KeyError:
                     print "Unknown attendee of recent interview: ", attendee
                     continue
+                interviewer.recent_slots_by_isoweek[slot.isoweek] += 1
                 interviewer.recent_interview_slots += 1
                 if not slot.event.summary.lower().startswith("interview placeholder"):
                     interviewer.recent_interviews += 1

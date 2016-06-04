@@ -5,6 +5,7 @@
 import csv
 import datetime
 import os
+from collections import Counter
 from calendar_fetcher import CalendarCache
 
 
@@ -25,6 +26,7 @@ class Interviewer(object):
         self.technical = to_bool(fields.get("technical"))
         self.can_do_frontend_test = to_bool(fields.get("can_do_frontend_test"))
         self.senior_developer = to_bool(fields.get("senior_developer"))
+        self.civil_servant = to_bool(fields.get("civil_servant"))
         self.gender = fields.get("gender").lower().strip()
         self.use_rate = float(fields.get("use_rate", "1"))
         self.team = fields.get("team")
@@ -32,6 +34,14 @@ class Interviewer(object):
         self.recent_interview_slots = 0
         self.recent_interviews = 0
         self.newly_assigned_interviews = 0
+        self.recent_slots_by_isoweek = Counter()
+        self.new_slots_by_isoweek = Counter()
+
+    def slots_in_week(self, isoweek):
+        return (
+            self.recent_slots_by_isoweek[isoweek] +
+            self.new_slots_by_isoweek[isoweek]
+        )
 
     def recent_work(self):
         return (
@@ -78,7 +88,7 @@ class Interviewers(object):
         return self._people[email]
 
 
-def fetch_interviewers(creds, cache_dir):
+def fetch_interviewers(calendar_service, cache_dir):
     csv_file = os.environ["INTERVIEWERS_CSV"]
 
     interviewers = Interviewers.from_csv(csv_file)
@@ -88,7 +98,7 @@ def fetch_interviewers(creds, cache_dir):
     date_max = today + datetime.timedelta(days=28)
 
     calendar_fetcher = CalendarCache(
-        creds, date_min, date_max, os.path.join(cache_dir, "calendars")
+        calendar_service, date_min, date_max, os.path.join(cache_dir, "calendars")
     )
 
     for interviewer in interviewers:

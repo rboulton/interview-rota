@@ -7,18 +7,19 @@ import os
 import pytz
 import re
 
-holiday_events = re.compile(r'\b((leave)|(al)|(holiday)|(ooi)|(out of office)|(wfh))\b')
-preferred_events = re.compile(r'\bpreferred\binterview\bslot\b')
+wfh_events = re.compile(r'\b((wfh)|(working from home))\b')
+unavailable_events = re.compile(r'\b((leave)|(al)|(holiday)|(ooi)|(out of office)|(off work)|(2nd line))\b')
+preferred_events = re.compile(r'preferred interview slot')
 
 
 class Event(object):
-    def __init__(self, data, is_saved):
+    def __init__(self, data, is_saved, calendar_id=None):
         self.is_saved = is_saved
         self.start = self.parse_date_or_time(data["start"], is_start=True)
         self.end = self.parse_date_or_time(data["end"], is_start=False)
         self.summary = data.get("summary", "")
         self.description = data.get("description", "")
-        self.attendees = self.group_attendees(data.get("attendees", []))
+        self.attendees = self.group_attendees(data, calendar_id)
         self.busy = data.get("transparency", "") != "transparent"
         invitation = self.owner_invitation(data)
         if invitation is None:
@@ -68,7 +69,7 @@ class Event(object):
         else:
             default = datetime.datetime(
                 year=2000, month=1, day=1,
-                hour=23, minute=59, tzinfo=pytz.utc,
+                hour=0, minute=0, tzinfo=pytz.utc,
             )
 
         return pytz.utc.normalize(
@@ -77,7 +78,12 @@ class Event(object):
         ))
 
     @staticmethod
-    def group_attendees(attendees):
+    def group_attendees(data, calendar_id):
+        attendees = data.get("attendees", [])
+        if len(attendees) == 0:
+            return {
+                "accepted": [calendar_id],
+            }
         result = {}
         for attendee in attendees:
             if attendee.get("optional", False):
@@ -130,9 +136,11 @@ class Calendar(object):
             if preferred_events.search(event.summary.lower()):
                 is_preferred = True
                 continue
+            if wfh_events.search(event.summary.lower()):
+                return None
             if not event.busy:
                 continue
-            if holiday_events.search(event.summary.lower()):
+            if unavailable_events.search(event.summary.lower()):
                 return None
             if event.response_status != "accepted":
                 continue
@@ -150,34 +158,54 @@ class Calendar(object):
             return 10
 
 
-class CalendarFetcher(object):
-    def __init__(self, creds, date_min_formatted, date_max_formatted):
+class CalendarService(object):
+    def __init__(self, creds):
         self.creds = creds
-        self.calendars = None
-        self.date_min_formatted = date_min_formatted
-        self.date_max_formatted = date_max_formatted
-
         self._service = None
-        
+        self._calendars = None
+
     def service(self):
         if self._service is None:
             http = self.creds.authorize(httplib2.Http())
             self._service = discovery.build('calendar', 'v3', http=http)
         return self._service
 
+    def calendar_id(self, calendar_summary):
+        if self._calendars is None:
+            self._fetch_list_of_calendars()
+        return self._calendars.get(calendar_summary, calendar_summary)
+
+    def events(self):
+        return self.service().events()
+
+    def _fetch_list_of_calendars(self):
+        self._calendars = dict(self._iter_calendars())
+
+    def _iter_calendars(self):
+        page_token = None
+        while True:
+            results = self.service().calendarList().list(pageToken=page_token).execute()
+            for result in results['items']:
+                yield (result['summary'], result['id'])
+            page_token = results.get('nextPageToken')
+            if page_token is None:
+                break
+
+
+class CalendarFetcher(object):
+    def __init__(self, service, date_min_formatted, date_max_formatted):
+        self.service = service
+        self.date_min_formatted = date_min_formatted
+        self.date_max_formatted = date_max_formatted
+        
     def fetch_events(self, calendar_summary):
         print("Fetching calendar for %s" % (calendar_summary, ))
-        if self.calendars is None:
-            self._fetch_list_of_calendars()
-
-        calendar_id = self.calendars.get(calendar_summary, calendar_summary)
-
-        return list(self._iter_events(calendar_id))
+        return list(self._iter_events(self.service.calendar_id(calendar_summary)))
 
     def _iter_events(self, calendar_id):
         page_token = None
         while True:
-            results = self.service().events().list(
+            results = self.service.events().list(
                 pageToken=page_token,
                 calendarId=calendar_id,
                 orderBy="startTime",
@@ -192,27 +220,15 @@ class CalendarFetcher(object):
             if page_token is None:
                 break
 
-    def _fetch_list_of_calendars(self):
-        self.calendars = dict(self._iter_calendars())
-
-    def _iter_calendars(self):
-        page_token = None
-        while True:
-            results = self.service().calendarList().list(pageToken=page_token).execute()
-            for result in results['items']:
-                yield (result['summary'], result['id'])
-            page_token = results.get('nextPageToken')
-            if page_token is None:
-                break
-
 
 class CalendarCache(object):
-    def __init__(self, creds, date_min, date_max, cache_dir):
+    def __init__(self, calendar_service, date_min, date_max, cache_dir):
+        self.calendar_service = calendar_service
         self.date_min_formatted = date_min.isoformat() + "T00:00:00Z"
         self.date_max_formatted = date_max.isoformat() + "T00:00:00Z"
         self.cache_dir = cache_dir
         self.calendar_fetcher = CalendarFetcher(
-            creds,
+            calendar_service,
             self.date_min_formatted,
             self.date_max_formatted,
         )
@@ -221,10 +237,13 @@ class CalendarCache(object):
             os.makedirs(cache_dir)
 
     def get(self, calendar_summary):
+        calendar_id = self.calendar_service.calendar_id(calendar_summary)
         return Calendar(
             calendar_summary,
-            [Event(event, True)
-             for event in self._fetch_events(calendar_summary)],
+            [
+                Event(event, True, calendar_id)
+                for event in self._fetch_events(calendar_summary)
+            ],
         )
 
     def _fetch_events(self, calendar_summary):

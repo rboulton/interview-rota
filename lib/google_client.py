@@ -9,7 +9,7 @@ import base64
 import os
 import zlib
 
-CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly'
+CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar'
 CREDENTIALS_ENV_VAR = "GOOGLE_CREDENTIALS"
 CLIENT_SECRET_FILE_ENV_VAR = "CLIENT_SECRET_FILE"
 
