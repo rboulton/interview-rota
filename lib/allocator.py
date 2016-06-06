@@ -275,9 +275,9 @@ class Allocator(object):
         )
 
         self.allocate_chairs()
-        self.allocate_gender()
         self.allocate_frontend()
         self.allocate_technical()
+        self.allocate_gender()
         self.allocate_civil_servant()
         self.allocate_three_people()
 
