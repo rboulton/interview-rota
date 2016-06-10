@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(
    "lib"
 ))
 
-from allocator import Allocator
+from allocator import Allocator, SlotAssignment, SlotAssignments
 from calendar_fetcher import CalendarService
 from calendar_setter import CalendarSetter
 from google_client import GoogleAuthentication
@@ -45,9 +45,23 @@ def main():
         minimum_warning = 10,
     )
     interviewers = fetch_interviewers(calendar_service, cache_dir)
-    allocator = Allocator(slots, interviewers)
+    assignments = SlotAssignments(
+        SlotAssignment(slot, interviewers)
+        for slot in slots
+    )
+
+    allocator = Allocator(slots, interviewers, assignments)
     allocator.allocate()
     setter = CalendarSetter(calendar_service)
+
+    print
+    for assignment in assignments:
+        if assignment.slot.new or assignment.assigned:
+            print "{}: {} {}".format(
+                assignment.slot.start,
+                "" if assignment.viable else "(NOT VIABLE)",
+                ", ".join(person.name for person in assignment.assigned),
+            )
     print
     allocator.display_interviewer_stats()
     print

@@ -148,7 +148,7 @@ class SlotAssignment(object):
         
         """
         return sum(
-            self.costs[person.email]
+            self.costs.get(person.email, 0)
             for person in self.assigned
         )
 
@@ -253,7 +253,7 @@ class PossibleAssignments(object):
 
 
 class Allocator(object):
-    def __init__(self, slots, interviewers):
+    def __init__(self, slots, interviewers, assignments):
         # All our interviewers
         self.interviewers = interviewers
 
@@ -262,14 +262,11 @@ class Allocator(object):
         self.slots = slots
 
         # Who is assigned to each slot
-        self.assignments = SlotAssignments(
-            SlotAssignment(slot, self.interviewers)
-            for slot in self.slots
-        )
+        self.assignments = assignments
 
     def allocate(self):
         self.count_recent_interviews()
-        self.conflicts_by_email, self.conflict_levels = self.calc_conflict_levels(
+        self.conflict_levels = self.calc_conflict_levels(
             self.interviewers,
             self.assignments
         )
@@ -597,7 +594,6 @@ class Allocator(object):
 
     @staticmethod
     def calc_conflict_levels(interviewers, assignments):
-        conflicts_by_email = Counter()
         conflict_levels = set()
         for assignment in assignments.new_assignments():
             costs = {}
@@ -609,9 +605,8 @@ class Allocator(object):
                 conflict_levels.add(conflict_level)
                 assignment.add_to_possible(conflict_level, interviewer.email)
                 costs[interviewer.email] = conflict_level
-                conflicts_by_email[interviewer.email] += conflict_level
             assignment.costs = costs
-        return dict(conflicts_by_email), sorted(conflict_levels)
+        return sorted(conflict_levels)
 
     def display_interviewer_stats(self):
         print "Name, work, recent interviewes, recent interview slots, new interview slots"
@@ -627,7 +622,11 @@ class Allocator(object):
         for slot in self.slots:
             if slot.new or slot.event is None:
                 continue
-            for attendee in slot.event.attendees.get("accepted", []):
+            for attendee in (
+                slot.event.attendees.get("accepted", []) +
+                slot.event.attendees.get("tentative", []) +
+                slot.event.attendees.get("needsAction", [])
+            ):
                 try:
                     interviewer = self.interviewers.by_email(attendee)
                 except KeyError:
