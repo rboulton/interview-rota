@@ -7,8 +7,8 @@ import os
 import pytz
 import re
 
-wfh_events = re.compile(r'\b((wfh)|(working from home))\b')
-unavailable_events = re.compile(r'\b((leave)|(al)|(holiday)|(ooi)|(out of office)|(off work)|(2nd line))\b')
+wfh_events = re.compile(r'\b((wfh)|(working from home)|(2nd line))\b')
+unavailable_events = re.compile(r'\b((leave)|(al)|(holiday)|(ooi)|(out of office)|(off work))\b')
 preferred_events = re.compile(r'preferred interview slot')
 
 
