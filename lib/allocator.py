@@ -533,11 +533,11 @@ class Allocator(object):
             interviewer.recent_work() + interviewer.planned_work()
             for interviewer in interviewers
         )
-        # print "Work done"
-        # for interviewer in interviewers:
-        #     print("{} recent={} planned={}".format(
-        #         interviewer.email, interviewer.recent_work(), interviewer.planned_work()
-        #     ))
+        print "Work done"
+        for interviewer in interviewers:
+            print("{} recent={} planned={}".format(
+                interviewer.email, interviewer.recent_work(), interviewer.planned_work()
+            ))
 
         # Share the work out to aim to get everyone doing an equal share
         average_work = float(work_done + slots_to_assign) / len(interviewers)
@@ -550,9 +550,9 @@ class Allocator(object):
             if work > 0
         )
 
-        # print "Raw work share"
-        # for email, share in sorted(work_share.items()):
-        #     print("{} {}".format(email, share))
+        print "Raw work share"
+        for email, share in sorted(work_share.items()):
+            print("{} {}".format(email, share))
 
         # print "Work Share unnormalised:"
         # import pprint;pprint.pprint(work_share)
@@ -569,11 +569,11 @@ class Allocator(object):
                 break
         work_share = rounded_work_share
 
-        # print "Work Share:"
-        # for email, share in sorted(work_share.items()):
-        #     print(" {} {}".format(email, share))
-        # print sum(work_share.values()), slots_to_assign
-        # print
+        print "Work Share:"
+        for email, share in sorted(work_share.items()):
+            print(" {} {}".format(email, share))
+        print sum(work_share.values()), slots_to_assign
+        print
 
         return work_share
 
