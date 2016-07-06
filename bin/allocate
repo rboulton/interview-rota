@@ -42,7 +42,7 @@ def main():
         cache_dir,
         days_back = 28,
         days_forward = 16,
-        minimum_warning = 10,
+        minimum_warning = 7,
     )
     interviewers = fetch_interviewers(calendar_service, cache_dir)
     assignments = SlotAssignments(
