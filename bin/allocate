@@ -41,7 +41,7 @@ def main():
         calendar_service,
         cache_dir,
         days_back = 28,
-        days_forward = 16,
+        days_forward = 28,
         minimum_warning = 7,
     )
     interviewers = fetch_interviewers(calendar_service, cache_dir)
@@ -57,33 +57,33 @@ def main():
     print
     for assignment in assignments:
         if assignment.slot.new or assignment.assigned:
-            print "{}: {} {}".format(
+            print("{}: {} {}".format(
                 assignment.slot.start,
                 "" if assignment.viable else "(NOT VIABLE)",
                 ", ".join(person.name for person in assignment.assigned),
-            )
+            ))
     print
     allocator.display_interviewer_stats()
     print
     for slot in slots:
         if slot.new and slot.people():
-            print "Creating event for {}: {}".format(
+            print("Creating event for {}: {}".format(
                 slot.start,
                 ", ".join(person.name for person in slot.people()),
-            )
+            ))
 
-    print "Confirm creation: type 'yes'"
+    print("Confirm creation: type 'yes'")
     confirm = sys.stdin.readline()
     if confirm.strip().lower() != 'yes':
-        print "Cancelled"
+        print("Cancelled")
         return
 
     for slot in slots:
         if slot.new and slot.people():
-            print "Creating event for {}: {}".format(
+            print("Creating event for {}: {}".format(
                 slot.start,
                 ", ".join(person.name for person in slot.people()),
-            )
+            ))
             # import pprint;pprint.pprint(slot.placeholder_invitation())
             setter.add_event(
                 appointment_calendar_name,
