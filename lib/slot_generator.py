@@ -48,39 +48,17 @@ class Slot(object):
             "description": """
 Chair: {}
 
-Please keep this slot available for a developer interview, and confirm your ability to attend now by accepting this invitation.
+Please keep this slot available for a developer interview or telephone sift, and confirm your ability to attend now by accepting this invitation.
 
-If you cannot attend, please find a replacement; contact Richard Boulton or the recruitment team if you have difficulty with this.  All panels must have two technical people, two civil servants, and a mix of genders.  We're making an effort to avoid calendar conflicts, but this isn't always possible: recruitment is a priority for GDS, so we expect you to make reasonable efforts to attend interviews in priority over other activities.
+If you cannot attend, please contact the recruitment team (Daniel Wilson or Khaitan Samji) to let them know. Only do this if you really cannot attend: recruitment is a priority for GDS, so we expect you to make reasonable efforts to attend interviews in priority over other activities. Please keep your calendar up to date; we will try to avoid conflicts when booking the meetings, so its easier for everyone if you do this.
 
-If you haven't been on an interview panel for these roles before, please contact Richard Boulton for an introduction to the process.
+If you haven't been on an interview panel for these roles before, please contact the chair of this interview, or if that fails Richard Boulton, for an introduction to the process.
 
-Slots are for 2.5 hours, but you may not be required for the full time.  The chair and one other interviewer are required for the first 60 minutes: the third member will join after 60 minutes to complete the panel.  The typical schedule is:
+Slots are for 2.5 hours, but you may not be required for the full time. For face to face interviews, the chair and one other interviewer are required for the first 60 minutes: the third member will join after 60 minutes to complete the panel.
 
- - from 0 to 15 minutes: prepare room, read CV and notes
- - from 15 to 60 minutes: technical exercise with candidate (2 technical interviewers)
- - from 60 to 120 minutes: interview panel with candidate (all 3 interviewers)
- - from 120 to 135 minutes: candidate questions, floor walk, etc
- - from 135 to 150 minutes: scoring, discussion
+You will receive a calendar invitation from JobVite closer to the time with details of the interview (or if we're not able to schedule one in the slot, the people team will update the calendar invitiation to indicate that the slot is not being used).
 
-Some tips to avoid conflicts in your calendar:
-
- - Ensure that your calendar is up to date, this makes it less likely that
-   you'll be invited to interview placeholders which conflict with other
-   events.
-
- - Confirm attendance at events in your calendar - events which you haven't yet
-   accepted won't be avoided when inviting you to slots.
-
- - Mark holidays, or periods when you're out of the office or working from
-   home, in your calendar with event titles such as "holiday", "annual leave",
-   "wfh", "out of office".
-
- - If there are times that you would most like to be invited to interviews,
-   please create a event with the title "Preferred Interview Slot" at that
-   time. (This may not be used, and you may still be invited to other slots,
-   but it'll be used in preference.)
-
-Also, if you haven't completed at least the unconscious bias e-learning, now's a good time to do so.  You must complete this before participating on a panel, and it only takes about 30 minutes.  See https://civilservicelearning.civilservice.gov.uk/learning-opportunities/unconscious-bias-e-learning
+Also, if you haven't completed at least the unconscious bias e-learning, now's a good time to do so. You must complete this before participating on a panel, and it only takes about 30 minutes. See https://civilservicelearning.civilservice.gov.uk/learning-opportunities/unconscious-bias-e-learning
 
             """.strip().format(
                 self.people()[0].name,
@@ -117,7 +95,7 @@ class SlotGenerator(object):
 
     def associate_event(self, slot):
         for event in self.booked.events:
-            if not "interview" in event.summary.lower():
+            if not "interview" in event.summary.lower() and not "booked" in event.summary.lower():
                 continue
             if event.intersects_with(slot.start, slot.end):
                 slot.event = event
