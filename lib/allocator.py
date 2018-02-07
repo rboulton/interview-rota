@@ -10,7 +10,7 @@ Takes into account:
  - number of interviews which interviewers were involved in in the last month
  - spread of skills that interviewers have
  - ensuring that all interviews have two technical people, and at least one
-   person of each gender
+   person of each gender, and diversity of BAME status
 
 """
 
@@ -34,7 +34,7 @@ class SlotAssignment(object):
         self.costs = {}
 
     def __repr__(self):
-        return "<SlotAssignment({}, {}, viable={}, cost={}, has_chair={}, can_be_frontend={}, has_two_tech={}, gender_diverse={})>".format(
+        return "<SlotAssignment({}, {}, viable={}, cost={}, has_chair={}, can_be_frontend={}, has_two_tech={}, gender_diverse={}, bame_diverse={})>".format(
             self.slot.start,
             self.assigned,
             self.viable,
@@ -43,6 +43,7 @@ class SlotAssignment(object):
             self.can_be_frontend,
             self.has_two_tech,
             self.gender_diverse,
+            self.bame_diverse,
         )
 
     @property
@@ -99,6 +100,7 @@ class SlotAssignment(object):
             self.has_chair and
             self.has_two_tech and
             self.gender_diverse and
+            self.bame_diverse and
             self.has_two_civil_servants
         )
 
@@ -138,6 +140,27 @@ class SlotAssignment(object):
         for person in self._assigned:
             genders[person.gender] += 1
         return genders['m'] > 0
+
+    @property
+    def bame_diverse(self):
+        bames = Counter()
+        for person in self._assigned:
+            bames[person.bame] += 1
+        return len(bames) >= 2
+
+    @property
+    def has_bame(self):
+        bames = Counter()
+        for person in self._assigned:
+            bames[person.bame] += 1
+        return bames['y'] > 0
+
+    @property
+    def has_non_bame(self):
+        bames = Counter()
+        for person in self._assigned:
+            bames[person.bame] += 1
+        return bames['n'] > 0
 
     @property
     def cost(self):
@@ -274,6 +297,7 @@ class Allocator(object):
         self.allocate_chairs()
         self.allocate_frontend()
         self.allocate_technical()
+        self.allocate_bame()
         self.allocate_gender()
         self.allocate_civil_servant()
         self.allocate_three_people()
@@ -336,6 +360,30 @@ class Allocator(object):
         check = lambda assignment: not assignment.has_man
         self.assign_people(check, people, max_conflict_level=3)
         self.drop_slots(check, "man")
+        # pprint([assignment for assignment in self.assignments.new_assignments()])
+
+    def allocate_bame(self):
+        """Allocate people of opposite BAME status to slots which have only one BAME
+        status
+
+        Will update the supplied assignments to store the allocated person in them.
+
+        May fail to allocate to some of the slots, in which case it will drop them.
+
+        """
+        print
+        print "Assigning opposite BAME status"
+        people = filter(lambda x: x.bame == 'y', self.interviewers)
+        print people
+        check = lambda assignment: not assignment.has_bame
+        self.assign_people(check, people, 0.5, max_conflict_level=3)
+        self.drop_slots(check, "BAME person")
+        # pprint([assignment for assignment in self.assignments.new_assignments()])
+
+        people = filter(lambda x: x.bame == 'n', self.interviewers)
+        check = lambda assignment: not assignment.has_non_bame
+        self.assign_people(check, people, max_conflict_level=3)
+        self.drop_slots(check, "non-BAME person")
         # pprint([assignment for assignment in self.assignments.new_assignments()])
 
     def allocate_frontend(self):
@@ -495,9 +543,10 @@ class Allocator(object):
                                 continue
 
                             isoweek = slot_start.isocalendar()[1]
-                            if person.slots_in_week(isoweek) >= 2:
-                                print "  Not assigning {} to slot {} - already got 2 interview slots in week {}".format(
-                                    email, slot_start, isoweek)
+                            slots_in_week = person.slots_in_week(isoweek)
+                            if slots_in_week  >= person.use_freq:
+                                print "  Not assigning {} to slot {} - already got {} interview slots in week {}".format(
+                                    email, slot_start, slots_in_week, isoweek)
                                 continue
 
                             print(
@@ -533,11 +582,13 @@ class Allocator(object):
             interviewer.recent_work() + interviewer.planned_work()
             for interviewer in interviewers
         )
-        print "Work done"
-        for interviewer in interviewers:
-            print("{} recent={} planned={}".format(
-                interviewer.email, interviewer.recent_work(), interviewer.planned_work()
-            ))
+        # Uncomment this to print out some stats on the work that people have
+        # been detected as doing:
+        #print "Work done"
+        #for interviewer in interviewers:
+        #    print("{} recent={} planned={}".format(
+        #        interviewer.email, interviewer.recent_work(), interviewer.planned_work()
+        #    ))
 
         # Share the work out to aim to get everyone doing an equal share
         average_work = float(work_done + slots_to_assign) / len(interviewers)
@@ -550,9 +601,9 @@ class Allocator(object):
             if work > 0
         )
 
-        print "Raw work share"
-        for email, share in sorted(work_share.items()):
-            print("{} {}".format(email, share))
+        # print "Raw work share"
+        # for email, share in sorted(work_share.items()):
+        #    print("{} {}".format(email, share))
 
         # print "Work Share unnormalised:"
         # import pprint;pprint.pprint(work_share)
@@ -569,11 +620,11 @@ class Allocator(object):
                 break
         work_share = rounded_work_share
 
-        print "Work Share:"
-        for email, share in sorted(work_share.items()):
-            print(" {} {}".format(email, share))
-        print sum(work_share.values()), slots_to_assign
-        print
+        # print "Work Share:"
+        # for email, share in sorted(work_share.items()):
+        #     print(" {} {}".format(email, share))
+        # print sum(work_share.values()), slots_to_assign
+        # print
 
         return work_share
 
@@ -604,14 +655,37 @@ class Allocator(object):
                     continue
                 conflict_levels.add(conflict_level)
                 assignment.add_to_possible(conflict_level, interviewer.email)
+                interviewer.add_to_possible(conflict_level, assignment.slot.start)
                 costs[interviewer.email] = conflict_level
             assignment.costs = costs
         return sorted(conflict_levels)
 
     def display_interviewer_stats(self):
-        print "Name, work, recent interviewes, recent interview slots, new interview slots"
-        for interviewer in sorted(self.interviewers, key=lambda x: x.work(), reverse=True):
-            print interviewer.name, interviewer.work(), interviewer.recent_interviews, interviewer.recent_interview_slots, interviewer.newly_assigned_interviews
+        headings = [
+            "Chair",
+            "name",
+            "work",
+            "recent interviewes",
+            "recent interview slots",
+            "new interview slots",
+        ]
+        for level in self.conflict_levels:
+            headings.append("slots at conflict {}".format(level))
+        print ",".join(headings)
+
+        for interviewer in sorted(self.interviewers, key=lambda x:(x.can_chair, x.work()), reverse=True):
+            row = [
+                "C" if interviewer.can_chair else " ",
+                interviewer.name,
+                interviewer.work(),
+                interviewer.recent_interviews,
+                interviewer.recent_interview_slots,
+                interviewer.newly_assigned_interviews,
+            ]
+            for level in self.conflict_levels:
+                row.append(len(interviewer.possible_slots.get(level, ())))
+            print ','.join(map(lambda x: str(x), row))
+
 
     def count_recent_interviews(self):
         """Count the number of recent interviews done.
