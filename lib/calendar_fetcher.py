@@ -7,8 +7,19 @@ import os
 import pytz
 import re
 
-wfh_events = re.compile(r'\b((wfh)|(working from home)|(2nd line))\b')
-unavailable_events = re.compile(r'\b((leave)|(al)|(holiday)|(ooi)|(out of office)|(off work))\b')
+# Events which should block being invited, even if the event isn't marked as
+# busy time (eg, people mark themselves as "out of the office" with an event,
+# but don't mark that as busy time because they can still be invited to other
+# events, remote meetings, etc).
+other_commitment_events = re.compile(r'\b((wfh)|(working from home)|(2nd line)|(remote working)|(ooo)|(out of office)|(not in the office))\b')
+
+# Events which should block being invited, but only if the event is marked as
+# busy.  The main reason for requiring the "busy" flag to be set for these is
+# that sometimes people put events like these in their calendars to remind
+# themselves about other people's holidays / absences, and this should't make
+# them not be invited to interviews.
+unavailable_events = re.compile(r'\b((leave)|(al)|(a/l)|(holiday)|(off)|(validation meeting))\b')
+
 preferred_events = re.compile(r'preferred interview slot')
 
 
@@ -23,16 +34,16 @@ class Event(object):
         self.busy = data.get("transparency", "") != "transparent"
         invitation = self.owner_invitation(data)
         if invitation is None:
-            self.response_status = ""
-            self.optional = True
+            self.response_status = "accepted"
+            self.optional = False
         else:
             self.response_status = invitation.get("responseStatus", "")
             self.optional = invitation.get("optional", False)
 
     def intersects_with(self, start, end):
-        if end < self.start:
+        if end <= self.start:
             return False
-        if start > self.end:
+        if start >= self.end:
             return False
         return True
 
@@ -95,6 +106,10 @@ class Event(object):
             ).append(attendee["email"])
         return result
 
+    def is_unavailable_event(self):
+        if unavailable_events.search(self.summary.lower()):
+            return True
+
     def __repr__(self):
         return u"Event({} to {}: {} {} {} optional={} busy={})".format(
             self.start,
@@ -136,16 +151,15 @@ class Calendar(object):
             if preferred_events.search(event.summary.lower()):
                 is_preferred = True
                 continue
-            if wfh_events.search(event.summary.lower()):
+            if other_commitment_events.search(event.summary.lower()):
                 return None
-            if not event.busy:
-                continue
-            if unavailable_events.search(event.summary.lower()):
+            if event.is_unavailable_event():
                 return None
-            if event.response_status != "accepted":
-                continue
-            max_attendees = max(max_attendees,
-                len(event.attendees.get("accepted", [])))
+            if event.busy:
+                if event.response_status != "accepted":
+                    continue
+                max_attendees = max(max_attendees,
+                    len(event.attendees.get("accepted", [])))
         if is_preferred:
             return 0
         elif max_attendees == 0:
