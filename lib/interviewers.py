@@ -28,7 +28,9 @@ class Interviewer(object):
         self.senior_developer = to_bool(fields.get("senior_developer"))
         self.civil_servant = to_bool(fields.get("civil_servant"))
         self.gender = fields.get("gender").lower().strip()
+        self.bame = fields.get("bame").lower().strip()
         self.use_rate = float(fields.get("use_rate", "1"))
+        self.use_freq = float(fields.get("use_freq", "2"))
         self.team = fields.get("team")
         self.calendar = None
         self.recent_interview_slots = 0
@@ -36,6 +38,12 @@ class Interviewer(object):
         self.newly_assigned_interviews = 0
         self.recent_slots_by_isoweek = Counter()
         self.new_slots_by_isoweek = Counter()
+        self.possible_slots = {}
+
+    def add_to_possible(self, conflict_level, start_time):
+        self.possible_slots.setdefault(
+            conflict_level, set()
+        ).add(start_time)
 
     def slots_in_week(self, isoweek):
         return (
